@@ -5,7 +5,7 @@
 
 - Подключаемся к VM
 ```bash
-ssh -i keypair esca@158.160.14.241
+ssh -i keypair esca@158.160.86.127
 ```
 - Проверяем кластер
 ```bash
@@ -39,10 +39,10 @@ postgres@otus-pg-vm1:~$ pgbench -i postgres
 dropping old tables...
 creating tables...
 generating data (client-side)...
-100000 of 100000 tuples (100%) done (elapsed 0.07 s, remaining 0.00 s)
+100000 of 100000 tuples (100%) done (elapsed 0.09 s, remaining 0.00 s)
 vacuuming...
 creating primary keys...
-done in 1.50 s (drop tables 0.22 s, create tables 0.03 s, client-side generate 0.92 s, vacuum 0.07 s, primary keys 0.26 s).
+done in 2.13 s (drop tables 0.72 s, create tables 0.38 s, client-side generate 0.31 s, vacuum 0.36 s, primary keys 0.37 s).
 ```
 - Запускаем вторую проверку
 
@@ -62,16 +62,16 @@ done in 1.50 s (drop tables 0.22 s, create tables 0.03 s, client-side generate 0
 postgres@otus-pg-vm1:~$ pgbench -c8 -P 6 -T 60 -U postgres postgres
 pgbench (15.6 (Ubuntu 15.6-1.pgdg22.04+1))
 starting vacuum...end.
-progress: 6.0 s, 597.0 tps, lat 13.348 ms stddev 10.631, 0 failed
-progress: 12.0 s, 614.5 tps, lat 13.015 ms stddev 10.206, 0 failed
-progress: 18.0 s, 553.0 tps, lat 14.466 ms stddev 9.171, 0 failed
-progress: 24.0 s, 577.5 tps, lat 13.855 ms stddev 8.623, 0 failed
-progress: 30.0 s, 240.0 tps, lat 30.417 ms stddev 35.324, 0 failed
-progress: 36.0 s, 511.8 tps, lat 16.979 ms stddev 38.633, 0 failed
-progress: 42.0 s, 432.5 tps, lat 18.490 ms stddev 12.648, 0 failed
-progress: 48.0 s, 430.7 tps, lat 18.599 ms stddev 14.149, 0 failed
-progress: 54.0 s, 546.5 tps, lat 14.631 ms stddev 11.530, 0 failed
-progress: 60.0 s, 303.7 tps, lat 26.351 ms stddev 33.092, 0 failed
+progress: 6.0 s, 305.2 tps, lat 26.103 ms stddev 18.889, 0 failed
+progress: 12.0 s, 364.2 tps, lat 21.912 ms stddev 15.602, 0 failed
+progress: 18.0 s, 483.0 tps, lat 16.597 ms stddev 11.483, 0 failed
+progress: 24.0 s, 282.3 tps, lat 28.351 ms stddev 31.683, 0 failed
+progress: 30.0 s, 584.8 tps, lat 13.672 ms stddev 8.512, 0 failed
+progress: 36.0 s, 516.2 tps, lat 15.514 ms stddev 12.082, 0 failed
+progress: 42.0 s, 488.7 tps, lat 16.368 ms stddev 11.369, 0 failed
+progress: 48.0 s, 489.8 tps, lat 16.314 ms stddev 10.378, 0 failed
+progress: 54.0 s, 357.2 tps, lat 22.417 ms stddev 23.288, 0 failed
+progress: 60.0 s, 625.0 tps, lat 12.803 ms stddev 7.558, 0 failed
 transaction type: <builtin: TPC-B (sort of)>
 scaling factor: 1
 query mode: simple
@@ -79,12 +79,12 @@ number of clients: 8
 number of threads: 1
 maximum number of tries: 1
 duration: 60 s
-number of transactions actually processed: 28851
+number of transactions actually processed: 26986
 number of failed transactions: 0 (0.000%)
-latency average = 16.636 ms
-latency stddev = 20.119 ms
-initial connection time = 15.198 ms
-tps = 480.670245 (without initial connection time)
+latency average = 17.785 ms
+latency stddev = 15.674 ms
+initial connection time = 14.623 ms
+tps = 449.756577 (without initial connection time)
 ```
 - Текущие настройки vacuum
 ```bash
@@ -106,9 +106,7 @@ SELECT name, setting, context, short_desc FROM pg_settings WHERE name like 'vacu
  vacuum_multixact_freeze_min_age   | 5000000    | user    | Minimum age at which VACUUM should freeze a MultiXactId in a table row.
  vacuum_multixact_freeze_table_age | 150000000  | user    | Multixact age at which VACUUM should scan whole table to freeze tuples.
 ```
-
-
-- Ставим расширение через psql
+- Ставим расширение pgstattuple через psql
 ```bash
 create extension pgstattuple;
 CREATE EXTENSION
@@ -128,15 +126,144 @@ free_space         | 188960     -- объём свободного простр�
 free_percent       | 1.41       -- процентное соотношение свободного пространства к общему размеру таблицы
 ```
 
-- Скрипт на 10 повторений обновления таблицы
+### Работа с таблицей
+
+- Создаем таблицу и заполняем 1кк строк
+```postgresql
+testdb=# CREATE TABLE student( id serial, fio text );
+CREATE TABLE
+testdb=# INSERT INTO student(fio) SELECT (MD5(random()::text)) FROM generate_series(1,1000000);
+INSERT 0 1000000
+```
+- Размер файла
+```postgresql
+testdb=# SELECT pg_size_pretty(pg_total_relation_size('student'));
+ pg_size_pretty
+----------------
+ 65 MB
+(1 row)
+```
+- Смотрим данные автовакуума и мертвых строк до обновления
+```postgresql
+testdb=# SELECT relname, n_live_tup, n_dead_tup, trunc(100*n_dead_tup/(n_live_tup+1))::float AS "ratio%", last_autovacuum FROM pg_stat_user_tables WHERE relname = 'student';
+ relname | n_live_tup | n_dead_tup | ratio% |        last_autovacuum
+---------+------------+------------+--------+-------------------------------
+ student |    1000000 |          0 |      0 | 2024-05-01 07:08:19.271283+00
+```
+- 5 раз обновляем строки и добавить символ
 ```postgresql
 DO $$
 DECLARE
     i INTEGER := 0;
 BEGIN
-    FOR i IN 1..10 LOOP
-        UPDATE t3 SET c1 = 1;
+    FOR i IN 1..5 LOOP
+        UPDATE student SET fio = fio || 'N';
         RAISE NOTICE 'Шаг цикла: %', i;
     END LOOP;
 END$$;
+```
+- Смотрим данные таблицы
+```postgresql
+testdb=# SELECT relname, n_live_tup, n_dead_tup, trunc(100*n_dead_tup/(n_live_tup+1))::float AS "ratio%", last_autovacuum FROM pg_stat_user_tables WHERE relname = 'student';
+ relname | n_live_tup | n_dead_tup | ratio% |        last_autovacuum
+---------+------------+------------+--------+-------------------------------
+ student |    1000000 |    5000000 |    499 | 2024-05-01 07:08:19.271283+00
+(1 row)
+```
+- Смотрим когда сработал автовакуум
+```postgresql
+testdb=# SELECT relname, n_live_tup, n_dead_tup, trunc(100*n_dead_tup/(n_live_tup+1))::float AS "ratio%", last_autovacuum FROM pg_stat_user_tables WHERE relname = 'student';
+ relname | n_live_tup | n_dead_tup | ratio% |        last_autovacuum
+---------+------------+------------+--------+-------------------------------
+ student |     998661 |          0 |      0 | 2024-05-01 07:22:33.225258+00
+(1 row)
+```
+- Еще 5 раз обновляем таблицу
+```postgresql
+DO $$
+DECLARE
+    i INTEGER := 0;
+BEGIN
+    FOR i IN 1..5 LOOP
+        UPDATE student SET fio = fio || 'Y';
+        RAISE NOTICE 'Шаг цикла: %', i;
+    END LOOP;
+END$$;
+```
+- Смотрим размер файла
+```postgresql
+testdb=# SELECT pg_size_pretty(pg_total_relation_size('student'));
+ pg_size_pretty
+----------------
+ 438 MB
+(1 row)
+```
+- Выключаем автовакуум для таблицы
+```postgresql
+testdb=# ALTER TABLE student SET (autovacuum_enabled = false);
+ALTER TABLE
+```
+- Обновляем все строки 10 раз
+```postgresql
+testdb=# DO $$
+    DECLARE
+        i INTEGER := 0;
+    BEGIN
+        FOR i IN 1..10 LOOP
+                UPDATE student SET fio = fio || 'O';
+                RAISE NOTICE 'Шаг цикла: %', i;
+            END LOOP;
+    END$$;
+NOTICE:  Шаг цикла: 1
+NOTICE:  Шаг цикла: 2
+NOTICE:  Шаг цикла: 3
+NOTICE:  Шаг цикла: 4
+NOTICE:  Шаг цикла: 5
+NOTICE:  Шаг цикла: 6
+NOTICE:  Шаг цикла: 7
+NOTICE:  Шаг цикла: 8
+NOTICE:  Шаг цикла: 9
+NOTICE:  Шаг цикла: 10
+DO
+```
+- Смотрим размер таблицы
+```postgresql
+testdb=# SELECT pg_size_pretty(pg_total_relation_size('student'));
+ pg_size_pretty
+----------------
+ 879 MB
+(1 row)
+```
+- И данные по ней
+```postgresql
+testdb=# SELECT relname, n_live_tup, n_dead_tup, trunc(100*n_dead_tup/(n_live_tup+1))::float AS "ratio%", last_autovacuum FROM pg_stat_user_tables WHERE relname = 'student';
+ relname | n_live_tup | n_dead_tup | ratio% |        last_autovacuum
+---------+------------+------------+--------+-------------------------------
+ student |     990610 |   10000000 |   1009 | 2024-05-01 07:29:33.880631+00
+(1 row)
+```
+- Объяснение размера файла: было 438 MB стало 879MB - размер увеличился в 2 раза, т.к. обновление было 10 раз без включенного
+автовакуума и копились скопированные(новые с измененными данными) кортэжи, без удаления старых и остались старые строки с флагом удален.
+Часть новых строк влезло в уже "растянутый" файл, а часть пришлось увеличивать.\
+Ниже, в разделе дополнительно, можно посмотреть, что процентное соотношение размера живых кортежей к общему размеру 
+таблицы очень маленькое, после прохождения автовакуума, т.е. большую часть занимают пустые данные.
+### Дополнительно
+- Включили автовакуум обратно
+```postgresql
+testdb=# ALTER TABLE student SET (autovacuum_enabled = true);
+ALTER TABLE
+```
+- Посмотрим еще состояние таблицы в конце, после отработки автовакуума
+```postgresql
+testdb=#  select * from pgstattuple('student') \gx
+-[ RECORD 1 ]------+----------
+table_len          | 921845760
+tuple_count        | 1000000
+tuple_len          | 81000000
+tuple_percent      | 8.79 -- процентное соотношение размера живых кортежей к общему размеру таблицы
+dead_tuple_count   | 0
+dead_tuple_len     | 0
+dead_tuple_percent | 0
+free_space         | 826289940
+free_percent       | 89.63 -- процентное соотношение свободного пространства к общему размеру таблицы
 ```
