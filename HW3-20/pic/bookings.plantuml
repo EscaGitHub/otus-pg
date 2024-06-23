@@ -1,0 +1,104 @@
+@startuml
+
+!theme plain
+top to bottom direction
+skinparam linetype ortho
+
+class node6 as "aircrafts  /* Самолеты */" {
+   model  /* Модель самолета */: text
+   range  /* Максимальная дальность полета, км */: integer
+   aircraft_code  /* Код самолета, IATA */: char(3)
+}
+class node8 as "airports  /* Аэропорты */" {
+   airport_name  /* Название аэропорта */: text
+   city  /* Город */: text
+   longitude  /* Координаты аэропорта: долгота */: double precision
+   latitude  /* Координаты аэропорта: широта */: double precision
+   timezone  /* Временная зона аэропорта */: text
+   airport_code  /* Код аэропорта */: char(3)
+}
+class node5 as "boarding_passes  /* Посадочные талоны */" {
+   boarding_no  /* Номер посадочного талона */: integer
+   seat_no  /* Номер места */: varchar(4)
+   ticket_no  /* Номер билета */: char(13)
+   flight_id  /* Идентификатор рейса */: integer
+}
+class node9 as "bookings  /* Бронирования */" {
+   book_date  /* Дата бронирования */: timestamp with time zone
+   total_amount  /* Полная сумма бронирования */: numeric(10,2)
+   book_ref  /* Номер бронирования */: char(6)
+}
+class node1 as "flights  /* Рейсы */" {
+   flight_no  /* Номер рейса */: char(6)
+   scheduled_departure  /* Время вылета по расписанию */: timestamp with time zone
+   scheduled_arrival  /* Время прилёта по расписанию */: timestamp with time zone
+   departure_airport  /* Аэропорт отправления */: char(3)
+   arrival_airport  /* Аэропорт прибытия */: char(3)
+   status  /* Статус рейса */: varchar(20)
+   aircraft_code  /* Код самолета, IATA */: char(3)
+   actual_departure  /* Фактическое время вылета */: timestamp with time zone
+   actual_arrival  /* Фактическое время прилёта */: timestamp with time zone
+   flight_id  /* Идентификатор рейса */: integer
+}
+class node4 as "flights_v  /* Рейсы */" {
+   flight_id  /* Идентификатор рейса */: integer
+   flight_no  /* Номер рейса */: char(6)
+   scheduled_departure  /* Время вылета по расписанию */: timestamp with time zone
+   scheduled_departure_local  /* Время вылета по расписанию, местное время в пункте отправления */: timestamp
+   scheduled_arrival  /* Время прилёта по расписанию */: timestamp with time zone
+   scheduled_arrival_local  /* Время прилёта по расписанию, местное время в пункте прибытия */: timestamp
+   scheduled_duration  /* Планируемая продолжительность полета */: interval
+   departure_airport  /* Код аэропорта отправления */: char(3)
+   departure_airport_name  /* Название аэропорта отправления */: text
+   departure_city  /* Город отправления */: text
+   arrival_airport  /* Код аэропорта прибытия */: char(3)
+   arrival_airport_name  /* Название аэропорта прибытия */: text
+   arrival_city  /* Город прибытия */: text
+   status  /* Статус рейса */: varchar(20)
+   aircraft_code  /* Код самолета, IATA */: char(3)
+   actual_departure  /* Фактическое время вылета */: timestamp with time zone
+   actual_departure_local  /* Фактическое время вылета, местное время в пункте отправления */: timestamp
+   actual_arrival  /* Фактическое время прилёта */: timestamp with time zone
+   actual_arrival_local  /* Фактическое время прилёта, местное время в пункте прибытия */: timestamp
+   actual_duration  /* Фактическая продолжительность полета */: interval
+}
+class node7 as "routes  /* Маршруты */" {
+   flight_no  /* Номер рейса */: char(6)
+   departure_airport  /* Код аэропорта отправления */: char(3)
+   departure_airport_name  /* Название аэропорта отправления */: text
+   departure_city  /* Город отправления */: text
+   arrival_airport  /* Код аэропорта прибытия */: char(3)
+   arrival_airport_name  /* Название аэропорта прибытия */: text
+   arrival_city  /* Город прибытия */: text
+   aircraft_code  /* Код самолета, IATA */: char(3)
+   duration  /* Продолжительность полета */: interval
+   days_of_week  /* Дни недели, когда выполняются рейсы */: integer[]
+}
+class node2 as "seats  /* Места */" {
+   fare_conditions  /* Класс обслуживания */: varchar(10)
+   aircraft_code  /* Код самолета, IATA */: char(3)
+   seat_no  /* Номер места */: varchar(4)
+}
+class node3 as "ticket_flights  /* Перелеты */" {
+   fare_conditions  /* Класс обслуживания */: varchar(10)
+   amount  /* Стоимость перелета */: numeric(10,2)
+   ticket_no  /* Номер билета */: char(13)
+   flight_id  /* Идентификатор рейса */: integer
+}
+class node0 as "tickets  /* Билеты */" {
+   book_ref  /* Номер бронирования */: char(6)
+   passenger_id  /* Идентификатор пассажира */: varchar(20)
+   passenger_name  /* Имя пассажира */: text
+   contact_data  /* Контактные данные пассажира */: jsonb
+   ticket_no  /* Номер билета */: char(13)
+}
+
+node5  -[#595959,plain]-^  node3 : "ticket_no, flight_id"
+node1  -[#595959,plain]-^  node6 : "aircraft_code"
+node1  -[#595959,plain]-^  node8 : "arrival_airport:airport_code"
+node1  -[#595959,plain]-^  node8 : "departure_airport:airport_code"
+node2  -[#595959,plain]-^  node6 : "aircraft_code"
+node3  -[#595959,plain]-^  node1 : "flight_id"
+node3  -[#595959,plain]-^  node0 : "ticket_no"
+node0  -[#595959,plain]-^  node9 : "book_ref"
+@enduml
