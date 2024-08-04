@@ -94,10 +94,82 @@ http://172.17.0.3:9090
 + Импортируем dashboard для метрик prometheus, метрики пошли:
 <img src="./pic/metrics_prom.png" alt="drawing" width="1051"/>
 
-### PgBouncer
+## Установка и настройка PgBouncer
 - Подключаемся к VM
 ```bash
 ssh -i keypair esca@89.169.168.245
+```
+- Ставим пакет
+```bash
+sudo apt-get -y install pgbouncer
+```
+- Редактируем /etc/pgbouncer/pgbouncer.ini
+```ini
+;; database name = connect string
+;;
+;; connect string params:
+;;   dbname= host= port= user= password= auth_user=
+;;   client_encoding= datestyle= timezone=
+;;   pool_size= reserve_pool= max_db_connections=
+;;   pool_mode= connect_query= application_name=
+[databases]
+
+* = host=localhost port=5432
+
+;; IP address or * which means all IPs
+listen_addr = *
+```
+- Добавляем пользователя для доступа в файл userlist.txt в этом же каталоге, пароль в md5 формате (ностроено в pgbouncer.ini)
+```bash
+# Такой формат для md5: 
+echo -n "md5"; echo -n "PASSLOGIN" | md5sum | awk '{print $1}'
+sudo nano userlist.txt
+```
+- Но у нас включено в postgres sha-256, поэтому будем через него. Достаем из postgres пароль в sha для нужного пользователя
+```postgresql
+SELECT usename,passwd FROM pg_shadow;
+```
+- Меняем тип аутентификации в pgbouncer.ini - по умолчанию md5, но нам не подходит
+```ini
+auth_type=scram-sha-256
+```
+- И прописываем в файл настроек userlist.txt
+```ini
+"postgres" "SCRAM-SHA-256$4096:QJD4TIe7uUKGk3l23mBWqA==$Iu6sRqpA7iVYWi5R1NfoP8TY/HEuBYFoatDkq11nehY=:eho0GVCw5n12qtabf9/MXNxvkYzz5xMLSiFcXrKRmW0="
+```
+- Запускаем - одновременно включаем (enable) и запускаем (start) службы systemd. При использовании этой команды служба \
+будет автоматически запускаться при старте системы и будет запущена в текущем сеансе без необходимости перезапуска системы.
+```bash
+sudo systemctl enable --now pgbouncer
+
+sudo systemctl status pgbouncer
+
+● pgbouncer.service - connection pooler for PostgreSQL
+     Loaded: loaded (/lib/systemd/system/pgbouncer.service; enabled; vendor preset: enabled)
+     Active: active (running) since Sun 2024-08-04 09:13:12 UTC; 25min ago
+       Docs: man:pgbouncer(1)
+             https://www.pgbouncer.org/
+   Main PID: 19599 (pgbouncer)
+     Status: "stats: 0 xacts/s, 0 queries/s, 0 client parses/s, 0 server parses/s, 0 binds/s, in 0 B/s, out 0 B/s, xact 0 μs, query >
+      Tasks: 2 (limit: 4556)
+     Memory: 1.4M
+        CPU: 218ms
+     CGroup: /system.slice/pgbouncer.service
+             └─19599 /usr/sbin/pgbouncer /etc/pgbouncer/pgbouncer.ini
+```
+- Проверяем доступ 6432 - порт балансера, вводим обычный пароль в plain-text формате для пользователя 
+```bash
+psql -h localhost -p 6432 -U postgres postgres
+Password for user postgres:
+psql (15.6 (Ubuntu 15.6-1.pgdg22.04+1))
+Type "help" for help.
+
+postgres=>
+```
+
+## Тестирование нагрузки
+```bash
+pgbench -p 6432 -c 5 -j 16 -T 10 -U postgres -h localhost postgres
 ```
 
 ## Источники
@@ -111,3 +183,5 @@ Part 4 – PgBouncer vs. Pgpool-II. Jul 29, 2020.
 - https://hub.docker.com/r/prometheuscommunity/pgbouncer-exporter - prometheuscommunity/pgbouncer-exporter
 - https://tembo.io/blog/postgres-connection-poolers - Benchmarking PostgreSQL connection poolers: PgBouncer, PgCat and Supavisor.
 Feb 13, 2024
+- https://grafana.com/grafana/dashboards/14022-pgbouncer/ - PgBouncer Grafana dashboard
+- https://github.com/prometheus-community/pgbouncer_exporter - PgBouncer Prometheus exporter
