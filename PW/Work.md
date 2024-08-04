@@ -13,7 +13,6 @@ pooler). Менеджеры подключений управляют соеди
 производительности. Между менеджером подключений и СУБД поддерживается относительно небольшое количество соединений, 
 которые можно переиспользовать. После отключения клиента соединение возвращается в пул и может быть повторно использовано
 тем же самым или новым клиентом.
-
 <img src="./pic/pools.png" alt="drawing" width="1051"/>
 
 ## Виды
@@ -55,6 +54,52 @@ pooler). Менеджеры подключений управляют соеди
 - Детальная настройка пулов.
 - Совместимость с консолью Pgbouncer.
 
+## Установка инфраструктуры
+### Prometheus
+Ставим Prometheus в docker с пробросом файла настроек и данных:
+```bash
+docker run --name prometheus -p 9090:9090 -v D:\docker\volumes\prometheus.yml:/etc/prometheus/prometheus.yml -v D:\docker\volumes\prometheus-data:/prometheus prom/prometheus
+```
+Новый запуск контейнера:
+```bash
+docker start -ai prometheus
+```
+Доступ
+```bash
+http://localhost:9090
+```
+
+### Grafana
+Устанавливаем docker
+```bash
+docker run -d -p 3000:3000 --name=grafana grafana/grafana-enterprise
+```
+Доступ (admin admin)
+```bash
+http://localhost:3000/login
+```
+Подключаем prometheus из докера: 
++ Home -> Connections -> Data sources -> Выбираем prometheus
++ Т.к. Prometheus в docker необходимо получить его ip
+```bash
+# Берем CONTAINER ID prometheus:
+docker ps -a 
+# Порлучаем ip:
+docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' CONTAINER ID
+```
++ В строке 'Prometheus server URL' прописываем полученный адрес до prometheus:
+```bash
+http://172.17.0.3:9090 
+```
++ Импортируем dashboard для метрик prometheus, метрики пошли:
+<img src="./pic/metrics_prom.png" alt="drawing" width="1051"/>
+
+### PgBouncer
+- Подключаемся к VM
+```bash
+ssh -i keypair esca@89.169.168.245
+```
+
 ## Источники
 - https://habr.com/ru/articles/499404/ - Управление нагрузкой на PostgreSQL, когда одного сервера уже мало. Андрей Сальников
 - https://yandex.cloud/ru/docs/managed-postgresql/concepts/pooling?utm_referrer=https%3A%2F%2Fwww.google.com%2F - Управление соединениями
@@ -64,3 +109,5 @@ performance with connection pooling. October 2020.
 Part 4 – PgBouncer vs. Pgpool-II. Jul 29, 2020.
 - https://postgrespro.ru/docs/postgrespro/15/pgbouncer - pgbouncer
 - https://hub.docker.com/r/prometheuscommunity/pgbouncer-exporter - prometheuscommunity/pgbouncer-exporter
+- https://tembo.io/blog/postgres-connection-poolers - Benchmarking PostgreSQL connection poolers: PgBouncer, PgCat and Supavisor.
+Feb 13, 2024
