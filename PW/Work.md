@@ -245,7 +245,7 @@ go_gc_duration_seconds_count 25
 ```bash
 pgbench -p 6432 -c 5 -j 16 -T 60 -U postgres -h localhost postgres
 ```
-+ Дорисовываем и изменяем метрики в Grafana
++ [Дорисовываем](PgBouncer-1723381883497.json) и изменяем метрики в Grafana
 <img src="./pic/grafana_metrics1.png" alt="drawing" width="1051"/>
 <img src="./pic/grafana_metrics2.png" alt="drawing" width="1051"/>
 
