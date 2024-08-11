@@ -239,8 +239,10 @@ go_gc_duration_seconds_count 25
 ```
 + Рестартим prometheus для применения настроек, проверяем что новый target появился и работает
 <img src="./pic/prometheus_pgbouncer.png" alt="drawing" width="1051"/>
+
 + Втягиваем dashboard в Grafana
 <img src="./pic/pgbouncer_firstrun.png" alt="drawing" width="1051"/>
+
 + Нагружаем тестом и смотрим, что бы метрики пошли
 ```bash
 pgbench -p 6432 -c 5 -j 16 -T 60 -U postgres -h localhost postgres
