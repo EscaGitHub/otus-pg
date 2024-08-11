@@ -166,11 +166,88 @@ Type "help" for help.
 
 postgres=>
 ```
-
-## Тестирование нагрузки
+- Пробуем нагрузку 
 ```bash
 pgbench -p 6432 -c 5 -j 16 -T 10 -U postgres -h localhost postgres
+
+pgbench (15.6 (Ubuntu 15.6-1.pgdg22.04+1))
+starting vacuum...end.
+transaction type: <builtin: TPC-B (sort of)>
+scaling factor: 1
+query mode: simple
+number of clients: 5
+number of threads: 5
+maximum number of tries: 1
+duration: 10 s
+number of transactions actually processed: 2496
+number of failed transactions: 0 (0.000%)
+latency average = 19.946 ms
+initial connection time = 66.578 ms
+tps = 250.679854 (without initial connection time)
 ```
+## Установка и настройка pgbouncer_exporter
+
+Экспортер метрик pbBouncer для Prometheus. Написан на Go. Метрики будут по-умолчанию экспортироваться в 9127/metrics.
++ Идем в настройки pgbouncer.ini b и прописываем доступ для пользователя экспортера, в users он так же должен быть добавлен
+```yaml
+;; comma-separated list of users who are just allowed to use SHOW command
+stats_users = postgres
+```
++ Рестартим pgbouncer
+```bash
+sudo systemctl reload pgbouncer.service
+```
++ Устанавливаем через docker образ с флагами, где прописываем доступ к БД pgbouncer и пробрасываем порт метрик
+```bash
+docker run -d -p 9127:9127 prometheuscommunity/pgbouncer-exporter --pgBouncer.connectionString="postgres://<user>:<password>@<postgres db ip>/pgbouncer?sslmode=disable"
+```
+Были проблемы со строкой подключения и докер не хотел запускаться.
++ Полезное для разворачивания docker
+```bash
+# Список container
+docker ps -a 
+# Выполнение комманды внутри docker
+docker exec -it 6ccf202636fb command
+# Удалить все контейнеры, созданные от image
+docker rm $(docker ps -a --filter ancestor=prometheuscommunity/pgbouncer-exporter:latest -q) 
+# Запуск ядра docker
+sudo service docker stop
+sudo service docker start
+```
++ Проверяем доступность получаемых [метрик](metrcis_under_loading.txt), внутри VM и потом на внешнем компьютере c prometheus
+```bash
+curl --location 'http://89.169.161.153:9127/metrics'
+
+# HELP go_gc_duration_seconds A summary of the pause duration of garbage collection cycles.
+# TYPE go_gc_duration_seconds summary
+go_gc_duration_seconds{quantile="0"} 2.4223e-05
+go_gc_duration_seconds{quantile="0.25"} 6.4102e-05
+go_gc_duration_seconds{quantile="0.5"} 7.8818e-05
+go_gc_duration_seconds{quantile="0.75"} 0.000110635
+go_gc_duration_seconds{quantile="1"} 0.000575917
+go_gc_duration_seconds_sum 0.002880287
+go_gc_duration_seconds_count 25 
+```
++ Идем в настройки promethеus.yml добавляем scrape
+```yaml
+  - job_name: 'postgres-exporter'
+    metrics_path: '/metrics'
+    # Override the global default and scrape targets from this job every 5 seconds.
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['89.169.161.153:9127']
+```
++ Рестартим prometheus для применения настроек, проверяем что новый target появился и работает
+<img src="./pic/prometheus_pgbouncer.png" alt="drawing" width="1051"/>
++ Втягиваем dashboard в Grafana
+<img src="./pic/pgbouncer_firstrun.png" alt="drawing" width="1051"/>
++ Нагружаем тестом и смотрим, что бы метрики пошли
+```bash
+pgbench -p 6432 -c 5 -j 16 -T 60 -U postgres -h localhost postgres
+```
++ Дорисовываем и изменяем метрики в Grafana
+<img src="./pic/grafana_metrics1.png" alt="drawing" width="1051"/>
+<img src="./pic/grafana_metrics2.png" alt="drawing" width="1051"/>
 
 ## Источники
 - https://habr.com/ru/articles/499404/ - Управление нагрузкой на PostgreSQL, когда одного сервера уже мало. Андрей Сальников
