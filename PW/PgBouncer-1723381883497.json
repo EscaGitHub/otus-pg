@@ -434,7 +434,7 @@
           "editorMode": "code",
           "expr": "pgbouncer_used_servers",
           "instant": false,
-          "legendFormat": "__auto",
+          "legendFormat": "Count of used servers",
           "range": true,
           "refId": "A"
         }
@@ -624,7 +624,7 @@
           "editorMode": "code",
           "expr": "pgbouncer_free_servers",
           "instant": false,
-          "legendFormat": "__auto",
+          "legendFormat": "Count of free servers",
           "range": true,
           "refId": "A"
         }
@@ -2115,8 +2115,12 @@
       {
         "current": {
           "selected": false,
-          "text": "All",
-          "value": "$__all"
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
         },
         "datasource": {
           "type": "prometheus",
@@ -2167,7 +2171,7 @@
       },
       {
         "current": {
-          "selected": true,
+          "selected": false,
           "text": [
             "postgres"
           ],
@@ -2199,8 +2203,12 @@
       {
         "current": {
           "selected": false,
-          "text": "All",
-          "value": "$__all"
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
         },
         "datasource": {
           "type": "prometheus",
@@ -2245,7 +2253,7 @@
     ]
   },
   "time": {
-    "from": "now-15m",
+    "from": "now-30m",
     "to": "now"
   },
   "timepicker": {
@@ -2276,6 +2284,6 @@
   "timezone": "browser",
   "title": "PgBouncer",
   "uid": "aek-7cbd6b6f87",
-  "version": 8,
+  "version": 10,
   "weekStart": ""
 }
