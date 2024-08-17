@@ -199,7 +199,7 @@ sudo systemctl reload pgbouncer.service
 ```
 + Устанавливаем через docker образ с флагами, где прописываем доступ к БД pgbouncer и пробрасываем порт метрик
 ```bash
-docker run -d -p 9127:9127 prometheuscommunity/pgbouncer-exporter --pgBouncer.connectionString="postgres://<user>:<password>@<postgres db ip>/pgbouncer?sslmode=disable"
+docker run -d -p 9127:9127 prometheuscommunity/pgbouncer-exporter --pgBouncer.connectionString="postgres://login:password@172.18.0.1:6432/pgbouncer?sslmode=disable"
 ```
 Были проблемы со строкой подключения и докер не хотел запускаться.
 + Полезное для разворачивания docker
@@ -216,6 +216,7 @@ sudo service docker start
 ```
 + Проверяем доступность получаемых [метрик](metrcis_under_loading.txt), внутри VM и потом на внешнем компьютере c prometheus
 ```bash
+curl --location 'http://localhost:9127/metrics'
 curl --location 'http://89.169.161.153:9127/metrics'
 
 # HELP go_gc_duration_seconds A summary of the pause duration of garbage collection cycles.
@@ -251,6 +252,130 @@ pgbench -p 6432 -c 5 -j 16 -T 60 -U postgres -h localhost postgres
 <img src="./pic/grafana_metrics1.png" alt="drawing" width="1051"/>
 <img src="./pic/grafana_metrics2.png" alt="drawing" width="1051"/>
 
+## Настройки и тестирование 
+
+### Основные настройки соединений к БД
+- **pool_mode = transaction** - По умолчанию стоит в session, то есть, сессия будет удерживаться 
+клиентом до тех пор, пока он не закроет соединение. Чаще всего значение имеет смысл заменить на transaction. В этом 
+случае соединение будет возвращаться в общий пул после завершения транзакции. Значение statement означает, что соединение
+будет освобождаться после выполнения каждого отдельного выражения, чего вы почти наверняка не должны хотеть.
+- **max_client_conn = 100** - Максимальное количество клиентских соединений
+- **default_pool_size = 20** - Сколько подключений к серверу разрешено для каждой пары пользователь/база данных.
+- **min_pool_size = 0** - Минимальное количество подключений к серверу для хранения в пуле.
+- **reserve_pool_size = 0** - Сколько дополнительных подключений разрешить к пулу
+
+### Включаем только transaction pool mode
+```bash
+pgbench -p 6432 -c 50 -j 16 -T 20 -C -U postgres -h localhost postgres
+```
+Описание параметров:
++ -p - номер порта сервера базы данных.
++ -с - количество смоделированных клиентов, то есть количество одновременных сеансов базы данных. По умолчанию — 1.
++ -j - Количество рабочих потоков в pgbench. Использование более одного потока может быть полезно на многопроцессорных 
+машинах. Клиенты распределяются максимально равномерно по доступным потокам. По умолчанию — 1.
++ -С - устанавливает новое соединение для каждой транзакции, а не делает это только один раз за сеанс клиента. 
+Это полезно для измерения накладных расходов на соединение.
+
+Клиентов 50, -j убрали, время теста 20 секунд.
+
+#### Тест напрямую в БД
+```bash
+pgbench -p 5432 -c 50 -T 20 -C -U postgres -h localhost postgres
+Password:
+pgbench (15.6 (Ubuntu 15.6-1.pgdg22.04+1))
+starting vacuum...end.
+transaction type: <builtin: TPC-B (sort of)>
+scaling factor: 1
+query mode: simple
+number of clients: 50
+number of threads: 1
+maximum number of tries: 1
+duration: 20 s
+number of transactions actually processed: 554
+number of failed transactions: 0 (0.000%)
+latency average = 1840.481 ms
+average connection time = 25.094 ms
+tps = 27.166807 (including reconnection times)
+```
+
+#### Тест через pgbouncer - 50 клиентов, 20 секунд
+```bash
+pgbench -p 6432 -c 50 -T 20 -C -U postgres -h localhost postgres
+Password:
+pgbench (15.6 (Ubuntu 15.6-1.pgdg22.04+1))
+starting vacuum...end.
+transaction type: <builtin: TPC-B (sort of)>
+scaling factor: 1
+query mode: simple
+number of clients: 50
+number of threads: 1
+maximum number of tries: 1
+duration: 20 s
+number of transactions actually processed: 894
+number of failed transactions: 0 (0.000%)
+latency average = 1129.130 ms
+average connection time = 15.063 ms
+tps = 44.281864 (including reconnection times)
+```
+
+| DB                                             | Pgbouncer                                      |
+|------------------------------------------------|------------------------------------------------|
+| tps = 27.166807 (including reconnection times) | tps = 44.281864 (including reconnection times) |
+
+<img src="./pic/transaction_mode1.png" alt="drawing" width="1051"/>
+<img src="./pic/transaction_mode2.png" alt="drawing" width="1051"/>
+
+### Изменяем настройки соединений и пулов
+- Увеличиваем максимальное количество клиентов - 500
+- Включаем размер пула по-умолчанию - 20
+- Выставляем минимальный пул - 10
+- И зарезервированный пул соединений для случаев нагрузки - 20
+
+```yaml
+;; Total number of clients that can connect
+max_client_conn = 500
+
+;; Default pool size.  20 is good number when transaction pooling
+;; is in use, in session pooling it needs to be the number of
+;; max clients you want to handle at any moment
+default_pool_size = 20
+
+;; Minimum number of server connections to keep in pool.
+min_pool_size = 10
+
+; how many additional connection to allow in case of trouble
+reserve_pool_size = 20
+
+;; If a clients needs to wait more than this many seconds, use reserve
+;; pool.
+;reserve_pool_timeout = 5
+```
+#### Тест через pgbouncer - 200 клиентов, с постоянным реконнектом, 60 секунд
+
+Хотим посмотреть как будут использоваться дополнительные - зарезервированные пулы соединений.
+
+```bash
+pgbench -p 6432 -c 200 -C -T 60 -U postgres -h localhost postgres
+Password:
+pgbench (15.6 (Ubuntu 15.6-1.pgdg22.04+1))
+starting vacuum...end.
+transaction type: <builtin: TPC-B (sort of)>
+scaling factor: 1
+query mode: simple
+number of clients: 200
+number of threads: 1
+maximum number of tries: 1
+duration: 60 s
+number of transactions actually processed: 2652
+number of failed transactions: 0 (0.000%)
+latency average = 4598.345 ms
+average connection time = 15.284 ms
+tps = 43.493907 (including reconnection times)
+```
+<img src="./pic/pools1.png" alt="drawing" width="1051"/>
+
+На графиках видно, что используется 40 соединений сервера, при 200 клиентах.
+
 ## Источники
 - https://habr.com/ru/articles/499404/ - Управление нагрузкой на PostgreSQL, когда одного сервера уже мало. Андрей Сальников
 - https://yandex.cloud/ru/docs/managed-postgresql/concepts/pooling?utm_referrer=https%3A%2F%2Fwww.google.com%2F - Управление соединениями
@@ -264,3 +389,5 @@ Part 4 – PgBouncer vs. Pgpool-II. Jul 29, 2020.
 Feb 13, 2024
 - https://grafana.com/grafana/dashboards/14022-pgbouncer/ - PgBouncer Grafana dashboard
 - https://github.com/prometheus-community/pgbouncer_exporter - PgBouncer Prometheus exporter
+- https://www.pgbouncer.org/config.html - Параметры конфигураций pgbouncer
+- https://www.postgresql.org/docs/current/pgbench.html - Параметры pgbench
