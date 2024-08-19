@@ -399,3 +399,5 @@ Feb 13, 2024
 - https://github.com/prometheus-community/pgbouncer_exporter - PgBouncer Prometheus exporter
 - https://www.pgbouncer.org/config.html - Параметры конфигураций pgbouncer
 - https://www.postgresql.org/docs/current/pgbench.html - Параметры pgbench
+
+## [Презентация](Pp.pptx)
